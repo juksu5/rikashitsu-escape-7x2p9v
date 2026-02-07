@@ -7,7 +7,13 @@
     <style>
         body { background-color: #000; color: #eee; text-align: center; font-family: serif; overflow: hidden; margin: 0; }
         
-        /* 前回のスタイルに戻したゲート画面 */
+        #game-container { 
+            width: 800px; height: 500px; margin: 20px auto; position: relative;
+            background: #222 url('assets/bg_lab.jpg') no-repeat center/cover;
+            border: 5px solid #333; overflow: hidden; display: none;
+            cursor: none; 
+        }
+        
         #gate-screen { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: #111; display: flex; flex-direction: column; 
@@ -17,27 +23,15 @@
         input { font-size: 20px; padding: 10px; margin: 10px; background: #222; color: #fff; border: 1px solid #555; }
         button { font-size: 20px; padding: 10px 40px; cursor: pointer; background: #600; color: #fff; border: none; }
 
-        #game-container { 
-            width: 800px; height: 500px; margin: 20px auto; position: relative;
-            background: url('assets/bg_lab.jpg') no-repeat center/cover;
-            border: 5px solid #333; overflow: hidden; display: none;
-            cursor: none; /* ゲーム中は標準カーソルを消す */
-        }
-        
         #enemy { position: absolute; top: 50px; left: 320px; font-size: 100px; transition: 0.5s; z-index: 5; opacity: 0; pointer-events: none; }
         .item { position: absolute; user-select: none; z-index: 20; }
         
         #lamp { bottom: 60px; left: 350px; width: 120px; cursor: pointer; }
         #matchbox { bottom: 50px; right: 50px; width: 140px; }
         
-        /* マウスにぴったり追従させる設定 */
         #hand-item { 
-            position: absolute; 
-            pointer-events: none; 
-            z-index: 100; 
-            width: 80px; 
-            display: none;
-            transform: translate(-50%, -50%); /* 中心をマウスに合わせる */
+            position: absolute; pointer-events: none; z-index: 100; width: 80px; 
+            display: none; transform: translate(-50%, -50%); 
         }
         
         #status-bar { font-size: 24px; color: #ff3333; margin: 15px; text-shadow: 2px 2px 4px #000; height: 35px; }
@@ -71,9 +65,11 @@
         const seIgnite = new Audio('assets/se_ignite.mp3');
         const seGameOver = new Audio('assets/se_gameover.mp3'); 
 
+        bgm.volume = 0.2; 
         let step = 0; 
         let timeLeft = 30;
         let lastX = 0;
+        let lastY = 0;
         let gameOver = false;
         let timerId;
 
@@ -81,8 +77,9 @@
             if (document.getElementById('pass-input').value === PASSWORD) {
                 document.getElementById('gate-screen').style.display = 'none';
                 document.getElementById('game-container').style.display = 'block';
-                // ブラウザの音声ブロックを解除するためにここで一度再生
-                bgm.play().catch(() => {}); 
+                [bgm, seScratch, seIgnite, seGameOver].forEach(s => s.load());
+                bgm.loop = true;
+                bgm.play().catch(() => {});
                 startGame();
             } else {
                 document.getElementById('error-msg').innerText = "合言葉が違う...";
@@ -90,7 +87,6 @@
         }
 
         function startGame() {
-            bgm.loop = true;
             updateStatus("ランプの蓋をクリックして取れ...");
             timerId = setInterval(updateTimer, 1000);
         }
@@ -102,7 +98,6 @@
             const enemy = document.getElementById('enemy');
             enemy.style.opacity = (30 - timeLeft) / 20;
             enemy.style.transform = `scale(${1 + (30 - timeLeft) * 0.9})`;
-            
             if (timeLeft <= 0) endGame("標本が追いついた...", false);
         }
 
@@ -110,28 +105,26 @@
             if (gameOver) return;
             const container = document.getElementById('game-container');
             const hand = document.getElementById('hand-item');
-            
-            // コンテナ内での相対座標を計算
             const rect = container.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            // マウス位置に画像をセット
             hand.style.left = x + "px";
             hand.style.top = y + "px";
 
-            // マッチを擦る判定（右から左）
+            // マッチを擦る（手前から奥＝下から上）
             if (step === 1) {
-                const speed = lastX - x;
                 const boxRect = document.getElementById('matchbox').getBoundingClientRect();
-                const boxLeft = boxRect.left - rect.left;
-                const boxRight = boxRect.right - rect.left;
-                const boxTop = boxRect.top - rect.top;
-                const boxBottom = boxRect.bottom - rect.top;
+                const bRight = boxRect.right - rect.left;
+                const bTop = boxRect.top - rect.top;
+                const bBottom = boxRect.bottom - rect.top;
 
-                if (x > boxLeft && x < boxRight && y > boxTop && y < boxBottom) {
-                    if (speed > 25) { 
+                // 箱の右側で、かつ y軸が減少（下から上へ移動）しているか
+                if (x > bRight - 30 && x < bRight + 15 && y > bTop && y < bBottom) {
+                    const speedY = lastY - y; // 下から上への移動量
+                    if (speedY > 20) { 
                         step = 2;
+                        seScratch.currentTime = 0;
                         seScratch.play();
                         hand.src = "assets/match_fire.png";
                         updateStatus("火がついた！芯をクリックして点火せよ！");
@@ -139,7 +132,7 @@
                 }
             }
             
-            // 横から蓋をかぶせる判定
+            // 横から消火
             if (step === 3) {
                 const lampRect = document.getElementById('lamp').getBoundingClientRect();
                 const lLeft = lampRect.left - rect.left;
@@ -158,6 +151,7 @@
                 }
             }
             lastX = x;
+            lastY = y;
         }
 
         function clickLamp() {
@@ -166,9 +160,10 @@
                 step = 1;
                 document.getElementById('lamp').src = "assets/lamp_open.png";
                 showHandItem("assets/match_stick.png");
-                updateStatus("マッチ箱で「右から左」へ擦れ！");
+                updateStatus("マッチ箱の右サイドで「手前から奥（上）」へ擦れ！");
             } else if (step === 2) {
                 step = 3;
+                seIgnite.currentTime = 0;
                 seIgnite.play();
                 document.getElementById('lamp').src = "assets/lamp_fire.png";
                 showHandItem("assets/lamp_cap.png");
@@ -191,12 +186,10 @@
             gameOver = true;
             clearInterval(timerId);
             bgm.pause();
-            
             if (!success) {
                 seGameOver.currentTime = 0;
-                seGameOver.play().catch(e => console.log("Audio play failed", e));
+                seGameOver.play();
             }
-
             setTimeout(() => {
                 alert(msg);
                 location.reload();
