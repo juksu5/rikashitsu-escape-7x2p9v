@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex,nofollow,noarchive">
+    <title>理科室からの脱出：刻限の点火</title>
+    <style>
+        body { background-color: #000; color: #eee; text-align: center; font-family: 'serif'; overflow: hidden; margin: 0; }
+        
+        /* ゲーム画面の設定 */
+        #game-container { 
+            width: 800px; height: 500px; margin: 20px auto; position: relative;
+            background-image: url('assets/bg_lab.jpg'); 
+            background-size: cover; background-position: center;
+            border: 5px solid #333; overflow: hidden; box-shadow: 0 0 100px #000 inset;
+            display: none; /* 最初は隠しておく */
+        }
+
+        /* 迫りくる標本（骸骨や筋肉） */
+        #enemy { position: absolute; top: 100px; left: 320px; font-size: 100px; transition: 0.5s; z-index: 10; pointer-events: none; opacity: 0; }
+        
+        /* ギミック（ランプとマッチ） */
+        .item { position: absolute; cursor: pointer; font-size: 60px; user-select: none; z-index: 20; }
+        #lamp { bottom: 60px; left: 370px; filter: drop-shadow(0 0 10px #000); }
+        #matchbox { bottom: 50px; right: 80px; font-size: 20px; padding: 15px; background: rgba(0,0,0,0.8); border: 1px solid #555; border-radius: 5px; color: #fff; }
+
+        /* UI要素 */
+        #status-bar { font-size: 24px; color: #ff3333; margin: 15px; text-shadow: 2px 2px 4px #000; height: 30px; }
+        #timer { color: #fff; font-size: 28px; position: absolute; top: 10px; right: 25px; z-index: 30; font-weight: bold; }
+        
+        /* パスワード・スタート画面 */
+        #gate-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        input { font-size: 20px; padding: 10px; margin: 10px; background: #222; color: #fff; border: 1px solid #555; }
+        button { font-size: 20px; padding: 10px 20px; cursor: pointer; background: #600; color: #fff; border: none; }
+        button:hover { background: #a00; }
+    </style>
+</head>
+<body>
+
+    <div id="gate-screen">
+        <h1 id="gate-title">理科室の扉は閉じられている...</h1>
+        <p>合言葉を入力せよ（※前回決めた言葉など）</p>
+        <input type="password" id="pass-input" placeholder="パスワード">
+        <button onclick="checkPass()">扉を開く</button>
+        <p id="error-msg" style="color:red;"></p>
+    </div>
+
+    <div id="status-bar"></div>
+
+    <div id="game-container">
+        <div id="timer">TIME: 20</div>
+        <div id="enemy">💀</div>
+        <div id="lamp" class="item" onclick="clickLamp()">🧪</div>
+        <div id="matchbox" class="item" onmousemove="scratchMatch()">📦<br><small>ここでマウスを高速往復させろ！</small></div>
+    </div>
+
+    <script>
+        // --- 設定項目 ---
+        const PASSWORD = "seik"; // ★ここを好きな合言葉に変えてください
+        const bgm = new Audio('assets/bgm_horror.mp3');
+        bgm.loop = true;
+        const seScratch = new Audio('assets/se_match.mp3');
+        const seIgnite = new Audio('assets/se_ignite.mp3');
+
+        let step = 0; 
+        let timeLeft = 20;
+        let scratchCount = 0;
+        let gameOver = false;
+        let timerId;
+
+        // パスワードチェック
+        function checkPass() {
+            const input = document.getElementById('pass-input').value;
+            if (input === PASSWORD) {
+                document.getElementById('gate-screen').style.display = 'none';
+                document.getElementById('game-container').style.display = 'block';
+                startGame();
+            } else {
+                document.getElementById('error-msg').innerText = "合言葉が違う...";
+            }
+        }
+
+        function startGame() {
+            bgm.play().catch(() => console.log("音声再生にはユーザーの操作が必要です"));
+            updateStatus("早くアルコールランプの蓋を取れ...");
+            timerId = setInterval(updateTimer, 1000);
+        }
+
+        function updateTimer() {
+            if (gameOver) return;
+            timeLeft--;
+            document.getElementById('timer').innerText = "TIME: " + timeLeft;
+            
+            const enemy = document.getElementById('enemy');
+            // 標本がじわじわ大きくなりながら近づく演出
+            enemy.style.opacity = (20 - timeLeft) / 15;
+            enemy.style.transform = `scale(${1 + (20 - timeLeft) * 0.9})`;
+            
+            if (timeLeft <= 0) {
+                endGame("背後に標本が立っている...。ゲームオーバー💀");
+            }
+        }
+
+        function clickLamp() {
+            if (gameOver) return;
+            if (step === 0) {
+                step = 1;
+                document.getElementById('lamp').innerText = "🪔";
+                updateStatus("マッチを擦れ！(箱の上でマウスを動かせ)");
+            } else if (step === 2) {
+                step = 3;
+                seIgnite.play();
+                document.getElementById('lamp').innerText = "🔥";
+                document.getElementById('lamp').style.filter = "drop-shadow(0 0 30px #ffaa00)";
+                endGame("点火成功！標本たちは動かなくなった。脱出成功！", true);
+            }
+        }
+
+        function scratchMatch() {
+            if (step === 1 && !gameOver) {
+                scratchCount++;
+                if (scratchCount % 8 === 0) {
+                    seScratch.currentTime = 0;
+                    seScratch.play();
+                }
+                if (scratchCount > 50) {
+                    step = 2;
+                    document.getElementById('matchbox').innerHTML = "🔥<br><small>火がついた！芯をクリック！</small>";
+                    updateStatus("火が消える前にランプの芯を狙え！");
+                }
+            }
+        }
+
+        function updateStatus(msg) {
+            document.getElementById('status-bar').innerText = msg;
+        }
+
+        function endGame(msg, success = false) {
+            gameOver = true;
+            clearInterval(timerId);
+            bgm.pause();
+            setTimeout(() => {
+                alert(msg);
+                location.reload(); // 最初に戻る
+            }, 500);
+        }
+    </script>
+</body>
+</html>
